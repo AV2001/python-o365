@@ -15,14 +15,17 @@ from requests_oauthlib import OAuth2Session
 from stringcase import pascalcase, camelcase, snakecase
 from tzlocal import get_localzone
 from zoneinfo import ZoneInfoNotFoundError
-from .utils import ME_RESOURCE, BaseTokenBackend, FileSystemTokenBackend, Token
+from .utils import ME_RESOURCE, BaseTokenBackend, FirestoreBackend, Token
 import datetime as dt
+
+from google.cloud import firestore
 
 log = logging.getLogger(__name__)
 
 O365_API_VERSION = 'v2.0'
 GRAPH_API_VERSION = 'v1.0'
-OAUTH_REDIRECT_URL = 'https://login.microsoftonline.com/common/oauth2/nativeclient'  # version <= 1.1.3.  : 'https://outlook.office365.com/owa/'
+# version <= 1.1.3.  : 'https://outlook.office365.com/owa/'
+OAUTH_REDIRECT_URL = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
 
 RETRIES_STATUS_LIST = (
     429,  # Status code for TooManyRequests
@@ -99,9 +102,10 @@ class Protocol:
         if timezone and isinstance(timezone, str):
             timezone = dt.timezone(timezone)
         try:
-            self.timezone = timezone or get_localzone() 
+            self.timezone = timezone or get_localzone()
         except ZoneInfoNotFoundError as e:
-            log.debug('Timezone not provided and the local timezone could not be found. Default to UTC.')
+            log.debug(
+                'Timezone not provided and the local timezone could not be found. Default to UTC.')
             self.timezone = dt.timezone.utc
         self.max_top_value = 500  # Max $top parameter value
 
@@ -159,7 +163,8 @@ class Protocol:
         """
         if user_provided_scopes is None:
             # return all available scopes
-            user_provided_scopes = [app_part for app_part in self._oauth_scopes]
+            user_provided_scopes = [
+                app_part for app_part in self._oauth_scopes]
         elif isinstance(user_provided_scopes, str):
             user_provided_scopes = [user_provided_scopes]
 
@@ -279,7 +284,7 @@ class MSBusinessCentral365Protocol(Protocol):
     _oauth_scopes = DEFAULT_SCOPES
     _protocol_scope_prefix = 'https://api.businesscentral.dynamics.com/'
 
-    def __init__(self, api_version='v1.0', default_resource=None,environment=None,
+    def __init__(self, api_version='v1.0', default_resource=None, environment=None,
                  **kwargs):
         """ Create a new Microsoft Graph protocol object
 
@@ -298,7 +303,8 @@ class MSBusinessCentral365Protocol(Protocol):
             _version = "1.0"
             _environment = ''
 
-        self._protocol_url = "{}v{}{}/api/".format(self._protocol_url, _version, _environment)
+        self._protocol_url = "{}v{}{}/api/".format(
+            self._protocol_url, _version, _environment)
 
         super().__init__(protocol_url=self._protocol_url,
                          api_version=api_version,
@@ -377,12 +383,14 @@ class Connection:
             if isinstance(credentials, str):
                 credentials = (credentials,)
             if not isinstance(credentials, tuple) or len(credentials) != 1 or (not credentials[0]):
-                raise ValueError('Provide client id only for public or password flow credentials')
+                raise ValueError(
+                    'Provide client id only for public or password flow credentials')
         else:
             if not isinstance(credentials, tuple) or len(credentials) != 2 or (not credentials[0] and not credentials[1]):
                 raise ValueError('Provide valid auth credentials')
 
-        self._auth_flow_type = auth_flow_type  # 'authorization', 'credentials', 'certificate', 'password', or 'public'
+        # 'authorization', 'credentials', 'certificate', 'password', or 'public'
+        self._auth_flow_type = auth_flow_type
         if auth_flow_type in ('credentials', 'certificate', 'password') and tenant_id == 'common':
             raise ValueError('When using the "credentials", "certificate", or "password" auth_flow the "tenant_id" '
                              'must be set')
@@ -394,14 +402,17 @@ class Connection:
         self.scopes = scopes
         self.default_headers = default_headers or dict()
         self.store_token = True
-        token_backend = token_backend or FileSystemTokenBackend(**kwargs)
+        token_backend = token_backend or FirestoreBackend(client=firestore.Client(
+        ), collection='tokens', doc_id='token_rJDsirvGUGYUB8VVDxWv')
         if not isinstance(token_backend, BaseTokenBackend):
-            raise ValueError('"token_backend" must be an instance of a subclass of BaseTokenBackend')
+            raise ValueError(
+                '"token_backend" must be an instance of a subclass of BaseTokenBackend')
         self.token_backend = token_backend
         self.session = None  # requests Oauth2Session object
 
         self.proxy = {}
-        self.set_proxy(proxy_server, proxy_port, proxy_username, proxy_password, proxy_http_only)
+        self.set_proxy(proxy_server, proxy_port, proxy_username,
+                       proxy_password, proxy_http_only)
         self.requests_delay = requests_delay or 0
         self._previous_request_at = None  # store previous request time
         self.raise_http_errors = raise_http_errors
@@ -413,7 +424,8 @@ class Connection:
         self.naive_session = None  # lazy loaded: holds a requests Session object
 
         self._oauth2_authorize_url = 'https://login.microsoftonline.com/' \
-                                     '{}/oauth2/v2.0/authorize'.format(tenant_id)
+                                     '{}/oauth2/v2.0/authorize'.format(
+                                         tenant_id)
         self._oauth2_token_url = 'https://login.microsoftonline.com/' \
                                  '{}/oauth2/v2.0/token'.format(tenant_id)
         self.oauth_redirect_url = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
@@ -434,12 +446,12 @@ class Connection:
         if proxy_server and proxy_port:
             if proxy_username and proxy_password:
                 proxy_uri = "{}:{}@{}:{}".format(proxy_username,
-                                                proxy_password,
-                                                proxy_server,
-                                                proxy_port)
+                                                 proxy_password,
+                                                 proxy_server,
+                                                 proxy_port)
             else:
                 proxy_uri = "{}:{}".format(proxy_server,
-                                            proxy_port)
+                                           proxy_port)
 
             if proxy_http_only is False:
                 self.proxy = {
@@ -592,7 +604,8 @@ class Connection:
         elif self.auth_flow_type == 'password':
             oauth_client = LegacyApplicationClient(client_id=client_id)
         else:
-            raise ValueError('"auth_flow_type" must be "authorization", "credentials" or "public"')
+            raise ValueError(
+                '"auth_flow_type" must be "authorization", "credentials" or "public"')
 
         requested_scopes = scopes or self.scopes
 
@@ -600,11 +613,13 @@ class Connection:
             # gets a fresh token from the store
             token = self.token_backend.get_token()
             if token is None:
-                raise RuntimeError('No auth token found. Authentication Flow needed')
+                raise RuntimeError(
+                    'No auth token found. Authentication Flow needed')
 
             oauth_client.token = token
             if self.auth_flow_type in ('authorization', 'public', 'password'):
-                requested_scopes = None  # the scopes are already in the token (Not if type is backend)
+                # the scopes are already in the token (Not if type is backend)
+                requested_scopes = None
             session = OAuth2Session(client_id=client_id,
                                     client=oauth_client,
                                     token=token,
@@ -684,7 +699,8 @@ class Connection:
                 )
             elif self.auth_flow_type in ('credentials', 'certificate'):
                 if self.request_token(None, store_token=False) is False:
-                    log.error('Refresh for Client Credentials Grant Flow failed.')
+                    log.error(
+                        'Refresh for Client Credentials Grant Flow failed.')
                     return False
             log.debug('New oauth token fetched by refresh method')
         else:
@@ -734,7 +750,8 @@ class Connection:
                 kwargs['headers']['Content-type'] = 'application/json'
             if 'data' in kwargs and kwargs['data'] is not None and kwargs['headers'].get(
                     'Content-type') == 'application/json':
-                kwargs['data'] = json.dumps(kwargs['data'], cls=self.json_encoder)  # convert to json
+                kwargs['data'] = json.dumps(
+                    kwargs['data'], cls=self.json_encoder)  # convert to json
 
         if self.timeout is not None:
             kwargs['timeout'] = self.timeout
@@ -747,7 +764,8 @@ class Connection:
         while not request_done:
             self._check_delay()  # sleeps if needed
             try:
-                log.debug('Requesting ({}) URL: {}'.format(method.upper(), url))
+                log.debug('Requesting ({}) URL: {}'.format(
+                    method.upper(), url))
                 log.debug('Request parameters: {}'.format(kwargs))
                 # auto_retry will occur inside this function call if enabled
                 response = request_obj.request(method, url, **kwargs)
@@ -768,7 +786,8 @@ class Connection:
                 if should_rt is True:
                     # The backend has checked that we can refresh the token
                     if self.refresh_token() is False:
-                        raise RuntimeError('Token Refresh Operation not working')
+                        raise RuntimeError(
+                            'Token Refresh Operation not working')
                     token_refreshed = True
                 elif should_rt is False:
                     # the token was refreshed by another instance and updated into
@@ -793,7 +812,8 @@ class Connection:
                     error = response.json()
                     error_message = error.get('error', {}).get('message', '')
                     error_code = (
-                        error.get("error", {}).get("innerError", {}).get("code", "")
+                        error.get("error", {}).get(
+                            "innerError", {}).get("code", "")
                     )
                 except ValueError:
                     error_message = ''
@@ -813,7 +833,8 @@ class Connection:
                     log.debug('Server Error: {}'.format(str(e)))
                 if self.raise_http_errors:
                     if error_message:
-                        raise HTTPError('{} | Error Message: {}'.format(e.args[0], error_message), response=response) from None
+                        raise HTTPError('{} | Error Message: {}'.format(
+                            e.args[0], error_message), response=response) from None
                     else:
                         raise e
                 else:
@@ -915,7 +936,7 @@ class Connection:
         But this is not an issue because this connections will be automatically closed.
         """
         if hasattr(self, 'session') and self.session is not None:
-                self.session.close()
+            self.session.close()
 
 
 def oauth_authentication_flow(client_id, client_secret, scopes=None,
@@ -950,7 +971,8 @@ def oauth_authentication_flow(client_id, client_secret, scopes=None,
     token_url = input('Paste the authenticated url here:\n')
 
     if token_url:
-        result = con.request_token(token_url, **kwargs)  # no need to pass state as the session is the same
+        # no need to pass state as the session is the same
+        result = con.request_token(token_url, **kwargs)
         if result:
             print('Authentication Flow Completed. Oauth Access Token Stored. '
                   'You can now use the API.')
