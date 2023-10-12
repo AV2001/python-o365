@@ -39,7 +39,8 @@ class Account:
             if not scopes:
                 kwargs['scopes'] = [self.protocol.prefix_scope('.default')]
             else:
-                raise ValueError(f'Auth flow type "{auth_flow_type}" does not require scopes')
+                raise ValueError(
+                    f'Auth flow type "{auth_flow_type}" does not require scopes')
 
             # set main_resource to blank when it's the 'ME' resource
             if self.protocol.default_resource == ME_RESOURCE:
@@ -48,7 +49,8 @@ class Account:
                 main_resource = ''
 
         elif auth_flow_type == 'password':
-            kwargs['scopes'] = self.protocol.get_scopes_for(scopes) if scopes else [self.protocol.prefix_scope('.default')]
+            kwargs['scopes'] = self.protocol.get_scopes_for(scopes) if scopes else [
+                self.protocol.prefix_scope('.default')]
 
             # set main_resource to blank when it's the 'ME' resource
             if self.protocol.default_resource == ME_RESOURCE:
@@ -80,48 +82,33 @@ class Account:
 
         return token is not None and not token.is_expired
 
-    def authenticate(self, *, scopes=None, handle_consent=consent.consent_input_token, **kwargs):
-        """ Performs the oauth authentication flow using the console resulting in a stored token.
-        It uses the credentials passed on instantiation
-
-        :param list[str] or None scopes: list of protocol user scopes to be converted
-         by the protocol or scope helpers
-        :param kwargs: other configurations to be passed to the
-         Connection.get_authorization_url and Connection.request_token methods
-        :return: Success / Failure
-        :rtype: bool
+    def authenticate(self, *, scopes=None, redirect_uri=None, **kwargs):
+        """
+        Performs the OAuth2 authentication flow using a browser, resulting in a stored token.
+        It uses the credentials passed on instantiation.
         """
 
         if self.con.auth_flow_type in ('authorization', 'public'):
             if scopes is not None:
                 if self.con.scopes is not None:
-                    raise RuntimeError('The scopes must be set either at the Account instantiation or on the account.authenticate method.')
+                    raise RuntimeError(
+                        'The scopes must be set either at the Account instantiation or on the account.authenticate method.')
                 self.con.scopes = self.protocol.get_scopes_for(scopes)
             else:
                 if self.con.scopes is None:
-                    raise ValueError('The scopes are not set. Define the scopes requested.')
+                    raise ValueError(
+                        'The scopes are not set. Define the scopes requested.')
 
-            consent_url, _ = self.con.get_authorization_url(**kwargs)
+            consent_url, _ = self.con.get_authorization_url(
+                redirect_uri=redirect_uri, **kwargs)
 
-            token_url = handle_consent(consent_url)
-
-            if token_url:
-                result = self.con.request_token(token_url, **kwargs)  # no need to pass state as the session is the same
-                if result:
-                    print('Authentication Flow Completed. Oauth Access Token Stored. You can now use the API.')
-                else:
-                    print('Something go wrong. Please try again.')
-
-                return bool(result)
-            else:
-                print('Authentication Flow aborted.')
-                return False
+            return consent_url
 
         elif self.con.auth_flow_type in ('credentials', 'certificate', 'password'):
             return self.con.request_token(None, requested_scopes=scopes, **kwargs)
         else:
-            raise ValueError('Connection "auth_flow_type" must be "authorization", "public", "password", "certificate"'
-                             ' or "credentials"')
+            raise ValueError(
+                'Connection "auth_flow_type" must be "authorization", "public", "password", "certificate" or "credentials"')
 
     def get_current_user(self):
         """ Returns the current user """
@@ -261,7 +248,7 @@ class Account:
             from .tasks_graph import ToDo as ToDo
 
         return ToDo(parent=self, main_resource=resource)
-    
+
     def teams(self, *, resource=''):
         """ Get an instance to read information from Microsoft Teams """
 
