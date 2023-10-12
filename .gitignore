@@ -73,7 +73,7 @@ local_tests/
 .python-version
 Pipfile
 Pipfile.lock
-.vscode/*
+.vscode*
 
 # config.py file that contains secrets
 config.py
